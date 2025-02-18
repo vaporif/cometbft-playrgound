@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, num::NonZeroU64};
+use std::{collections::HashMap, env, num::NonZeroU128};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tendermint_abci::Application;
@@ -24,13 +24,13 @@ struct Transaction {
 #[derive(BorshSerialize, BorshDeserialize)]
 enum TxPayload {
     CreateAccount,
-    Transfer { to: Address, amount: NonZeroU64 },
+    Transfer { to: Address, amount: NonZeroU128 },
 }
 
 #[derive(Clone, Debug)]
 struct AppChain {
     //state: cnidarium::Storage,
-    balances: HashMap<Address, NonZeroU64>,
+    balances: HashMap<Address, u128>,
     nonces: HashMap<Address, u64>,
 }
 
