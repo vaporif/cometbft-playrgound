@@ -80,7 +80,7 @@ impl AppChain {
                     log: format!("account {} not found", tx.from),
                 })?;
 
-                if balance < amount {
+                if *balance < amount.get() {
                     return Err(ValidationError {
                         code: 5,
                         log: "insufficient funds".to_string(),
