@@ -2,23 +2,15 @@ use std::{collections::HashMap, env, num::NonZeroU64};
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use tendermint_abci::Application;
-use tendermint_proto::abci::{
-    RequestCheckTx, RequestInfo, RequestQuery, ResponseCheckTx, ResponseInfo, ResponseQuery,
-};
+use tendermint_proto::abci::{ResponseCheckTx, ResponseQuery};
 use thiserror::Error;
-
-#[derive(BorshSerialize, BorshDeserialize)]
-enum TxPayload {
-    CreateAccount,
-    Transfer { to: String, amount: NonZeroU64 },
-}
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Hash, Clone)]
 struct Address([u8; tendermint::account::LENGTH]);
 
 impl std::fmt::Display for Address {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "0x{}", hex::encode(&self.0))
+        write!(f, "0x{}", hex::encode(self.0))
     }
 }
 
@@ -29,10 +21,16 @@ struct Transaction {
     nonce: u64,
 }
 
+#[derive(BorshSerialize, BorshDeserialize)]
+enum TxPayload {
+    CreateAccount,
+    Transfer { to: Address, amount: NonZeroU64 },
+}
+
 #[derive(Clone, Debug)]
 struct AppChain {
     //state: cnidarium::Storage,
-    balances: HashMap<Address, u64>,
+    balances: HashMap<Address, NonZeroU64>,
     nonces: HashMap<Address, u64>,
 }
 
@@ -73,20 +71,21 @@ impl AppChain {
                 if !self.balances.contains_key(to) {
                     return Err(ValidationError {
                         code: 7,
-                        log: format!("account {} already exists", tx.from).to_string(),
+                        log: format!("account {} does not exist", tx.from).to_string(),
                     });
                 }
 
-                if !self.balances.contains_key(&tx.from) {
+                let balance = self.balances.get(&tx.from).ok_or_else(|| ValidationError {
+                    code: 5,
+                    log: format!("account {} not found", tx.from),
+                })?;
+
+                if balance < amount {
                     return Err(ValidationError {
-                        code: 7,
-                        log: format!("account {} already exists", tx.from).to_string(),
+                        code: 5,
+                        log: "insufficient funds".to_string(),
                     });
                 }
-                let account = self.balances.get(&tx.from).ok_or_else(|| ValidationError {
-                    code: 5,
-                    log: format!("insufficient funds on {}", tx.from),
-                })?;
             }
         }
 
@@ -95,8 +94,11 @@ impl AppChain {
 }
 
 impl Application for AppChain {
-    fn info(&self, request: RequestInfo) -> ResponseInfo {
-        ResponseInfo {
+    fn info(
+        &self,
+        request: tendermint_proto::abci::RequestInfo,
+    ) -> tendermint_proto::abci::ResponseInfo {
+        tendermint_proto::abci::ResponseInfo {
             data: "ex".to_string(),
             version: request.version,
             app_version: 1,
@@ -105,7 +107,7 @@ impl Application for AppChain {
         }
     }
 
-    fn check_tx(&self, request: RequestCheckTx) -> ResponseCheckTx {
+    fn check_tx(&self, request: tendermint_proto::abci::RequestCheckTx) -> ResponseCheckTx {
         match Transaction::try_from_slice(&request.tx) {
             Ok(tx) => {
                 if let Err(val_error) = self.validate_tx(&tx) {
@@ -126,7 +128,14 @@ impl Application for AppChain {
         }
     }
 
-    fn query(&self, request: RequestQuery) -> ResponseQuery {
+    fn finalize_block(
+        &self,
+        _request: tendermint_proto::abci::RequestFinalizeBlock,
+    ) -> tendermint_proto::abci::ResponseFinalizeBlock {
+        todo!()
+    }
+
+    fn query(&self, request: tendermint_proto::abci::RequestQuery) -> ResponseQuery {
         todo!()
     }
 }
