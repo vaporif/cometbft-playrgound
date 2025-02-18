@@ -2,7 +2,14 @@ use std::num::NonZeroU128;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::common::{Address, ChainId};
+use crate::common::{Address, ChainId, DateTimeUtc};
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub struct Header {
+    pub chain_id: ChainId,
+    pub expiration: Option<DateTimeUtc>,
+    pub timestamp: DateTimeUtc,
+}
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct Transaction {
