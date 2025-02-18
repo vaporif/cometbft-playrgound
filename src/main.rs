@@ -1,8 +1,9 @@
-use std::{collections::HashMap, env, num::NonZeroU128};
+use std::{collections::HashMap, env, num::NonZeroU128, sync::Arc};
 
 use borsh::{BorshDeserialize, BorshSerialize};
+use parking_lot::RwLock;
 use tendermint_abci::Application;
-use tendermint_proto::abci::{ResponseCheckTx, ResponseQuery};
+use tendermint_proto::abci::{ExecTxResult, ResponseCheckTx, ResponseQuery};
 use thiserror::Error;
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Hash, Clone)]
@@ -29,9 +30,11 @@ enum TxPayload {
 
 #[derive(Clone, Debug)]
 struct AppChain {
+    // TODO: arc rwlocks should be removed in favor of proper storage
     //state: cnidarium::Storage,
-    balances: HashMap<Address, u128>,
-    nonces: HashMap<Address, u64>,
+    balances: Arc<RwLock<HashMap<Address, u128>>>,
+    nonces: Arc<RwLock<HashMap<Address, u64>>>,
+    height: Arc<RwLock<i64>>,
 }
 
 #[derive(Error, Debug)]
@@ -44,13 +47,16 @@ struct ValidationError {
 impl AppChain {
     fn new() -> Self {
         Self {
-            balances: HashMap::new(),
-            nonces: HashMap::new(),
+            height: Arc::new(RwLock::new(0)),
+            balances: Arc::new(RwLock::new(HashMap::new())),
+            nonces: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
     fn validate_tx(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let curr_nonce = self.nonces.get(&tx.from).unwrap_or(&0);
+        let nonces = self.nonces.read();
+        let balances = self.balances.read();
+        let curr_nonce = nonces.get(&tx.from).unwrap_or(&0);
         if curr_nonce < &tx.nonce {
             return Err(ValidationError {
                 code: 7,
@@ -60,7 +66,7 @@ impl AppChain {
 
         match &tx.tx_payload {
             TxPayload::CreateAccount => {
-                if self.balances.contains_key(&tx.from) {
+                if balances.contains_key(&tx.from) {
                     return Err(ValidationError {
                         code: 7,
                         log: format!("account {} already exists", tx.from).to_string(),
@@ -68,14 +74,14 @@ impl AppChain {
                 }
             }
             TxPayload::Transfer { to, amount } => {
-                if !self.balances.contains_key(to) {
+                if !balances.contains_key(to) {
                     return Err(ValidationError {
                         code: 7,
                         log: format!("account {} does not exist", tx.from).to_string(),
                     });
                 }
 
-                let balance = self.balances.get(&tx.from).ok_or_else(|| ValidationError {
+                let balance = balances.get(&tx.from).ok_or_else(|| ValidationError {
                     code: 5,
                     log: format!("account {} not found", tx.from),
                 })?;
@@ -107,6 +113,10 @@ impl Application for AppChain {
         }
     }
 
+    fn query(&self, request: tendermint_proto::abci::RequestQuery) -> ResponseQuery {
+        todo!()
+    }
+
     fn check_tx(&self, request: tendermint_proto::abci::RequestCheckTx) -> ResponseCheckTx {
         match Transaction::try_from_slice(&request.tx) {
             Ok(tx) => {
@@ -129,14 +139,67 @@ impl Application for AppChain {
     }
 
     fn finalize_block(
-        &self,
-        _request: tendermint_proto::abci::RequestFinalizeBlock,
+        &mut self,
+        request: tendermint_proto::abci::RequestFinalizeBlock,
     ) -> tendermint_proto::abci::ResponseFinalizeBlock {
-        todo!()
-    }
+        let mut height = self.height.write();
+        let mut balances = self.balances.write();
+        let mut nonces = self.nonces.write();
+        *height = request.height;
 
-    fn query(&self, request: tendermint_proto::abci::RequestQuery) -> ResponseQuery {
-        todo!()
+        let mut tx_results = Vec::new();
+
+        for tx_bytes in request.txs {
+            match Transaction::try_from_slice(&tx_bytes) {
+                Ok(tx) => {
+                    if let Err(val_error) = self.validate_tx(&tx) {
+                        tx_results.push(ExecTxResult {
+                            code: val_error.code,
+                            log: val_error.log,
+                            ..Default::default()
+                        });
+
+                        continue;
+                    }
+                    match tx.tx_payload {
+                        TxPayload::CreateAccount => {
+                            balances.insert(tx.from.clone(), 1_000_000);
+
+                            tx_results.push(ExecTxResult {
+                                code: 0,
+                                log: format!("Account {} created successfully", &tx.from),
+                                ..Default::default()
+                            });
+                        }
+                        TxPayload::Transfer { to, amount } => {
+                            *balances.get_mut(&tx.from).unwrap() -= amount.get();
+                            *balances.get_mut(&to).unwrap() += amount.get();
+
+                            tx_results.push(ExecTxResult {
+                                code: 0,
+                                log: format!("Transaction complete"),
+                                ..Default::default()
+                            });
+                        }
+                    }
+                }
+                Err(err) => {
+                    tx_results.push(ExecTxResult {
+                        code: 1,
+                        log: format!("failed to parse tx {}", err),
+                        ..Default::default()
+                    });
+                }
+            }
+        }
+
+        tendermint_proto::abci::ResponseFinalizeBlock {
+            events: vec![],
+            tx_results,
+            validator_updates: vec![],
+            consensus_param_updates: None,
+            app_hash: vec![0u8].into(),
+        }
     }
 }
 
