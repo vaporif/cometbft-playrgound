@@ -4,9 +4,9 @@ use tendermint_proto::abci::{ExecTxResult, ResponseCheckTx, ResponseQuery};
 
 use crate::transaction::{Transaction, TxPayload};
 
-use super::{Account, AppChain};
+use super::{Account, Shell};
 
-impl Application for AppChain {
+impl Application for Shell {
     fn info(
         &self,
         request: tendermint_proto::abci::RequestInfo,

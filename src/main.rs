@@ -1,6 +1,6 @@
 use std::env;
 
-use cometbft_playrgound::shell::AppChain;
+use cometbft_playrgound::shell::Shell;
 
 fn main() -> eyre::Result<()> {
     use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
@@ -12,7 +12,7 @@ fn main() -> eyre::Result<()> {
         .init();
     tracing::info!("starting");
 
-    let app = AppChain::new();
+    let app = Shell::new();
 
     let app = tendermint_abci::ServerBuilder::default().bind("127.0.0.1:26658", app)?;
     tracing::info!("listenening for abci events");

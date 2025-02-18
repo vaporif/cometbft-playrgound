@@ -13,6 +13,7 @@ pub struct Header {
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct Transaction {
+    pub header: Header,
     pub chain_id: ChainId,
     pub from: Address,
     pub tx_payload: TxPayload,

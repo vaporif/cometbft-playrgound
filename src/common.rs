@@ -8,6 +8,11 @@ pub struct DateTimeUtc(pub DateTime<Utc>);
 
 impl DateTimeUtc {
     const FORMAT: &'static str = "%Y-%m-%dT%H:%M:%S%.9f+00:00";
+
+    pub fn now() -> Self {
+        Self(Utc::now())
+    }
+
     pub fn to_rfc3339(&self) -> String {
         self.0.format(DateTimeUtc::FORMAT).to_string()
     }
@@ -49,5 +54,5 @@ impl std::fmt::Display for Address {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize)]
-pub struct ChainId(String);
+#[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
+pub struct ChainId(pub String);

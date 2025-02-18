@@ -4,7 +4,7 @@ use parking_lot::RwLock;
 use thiserror::Error;
 
 use crate::{
-    common::Address,
+    common::{Address, ChainId, DateTimeUtc},
     transaction::{Transaction, TxPayload},
 };
 
@@ -14,7 +14,8 @@ struct MerkleTree<'a, S> {
 }
 
 #[derive(Clone, Debug)]
-pub struct AppChain {
+pub struct Shell {
+    pub chain_id: ChainId,
     // TODO: arc rwlocks should be removed in favor of proper storage
     //state: cnidarium::Storage,
     accounts: Arc<RwLock<HashMap<Address, Account>>>,
@@ -34,9 +35,11 @@ struct ValidationError {
     log: String,
 }
 
-impl AppChain {
+impl Shell {
+    // TODO: read config
     pub fn new() -> Self {
         Self {
+            chain_id: ChainId("test".to_string()),
             height: Arc::new(RwLock::new(0)),
             accounts: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -44,6 +47,16 @@ impl AppChain {
 
     fn validate_tx(&self, tx: &Transaction) -> Result<(), ValidationError> {
         let accounts = self.accounts.read();
+        if let Some(expiration) = tx.header.expiration {
+            // TODO: Should be block time
+            if DateTimeUtc::now().0 > expiration.0 {
+                return Err(ValidationError {
+                    code: 3,
+                    log: "transaction expired".to_string(),
+                });
+            }
+        }
+
         let curr_nonce = accounts.get(&tx.from).map(|f| f.nonce).unwrap_or(0);
         if curr_nonce + 1 != tx.nonce {
             return Err(ValidationError {
