@@ -11,6 +11,7 @@ eyre = "0.6.12"
 hex = "0.4.3"
 jmt = "0.11.0"
 parking_lot = "0.12.3"
+serde = { version = "1.0.217", features = ["derive"] }
 tendermint = { version = "0.40.1", features = ["secp256k1"] }
 tendermint-abci = "0.40.1"
 tendermint-config = "0.40.1"

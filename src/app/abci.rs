@@ -2,11 +2,14 @@ use borsh::BorshDeserialize;
 use tendermint_abci::Application;
 use tendermint_proto::abci::{ExecTxResult, ResponseCheckTx, ResponseQuery};
 
-use crate::transaction::{Transaction, TxPayload};
+use crate::{
+    common::ChainId,
+    transaction::{Transaction, TxPayload},
+};
 
-use super::{Account, Shell};
+use super::{Account, App};
 
-impl Application for Shell {
+impl Application for App {
     fn info(
         &self,
         request: tendermint_proto::abci::RequestInfo,
@@ -20,12 +23,15 @@ impl Application for Shell {
         }
     }
 
-    //fn init_chain(
-    //    &self,
-    //    request: tendermint_proto::abci::RequestInitChain,
-    //) -> tendermint_proto::abci::ResponseInitChain {
-    //
-    //}
+    fn init_chain(
+        &self,
+        request: tendermint_proto::abci::RequestInitChain,
+    ) -> tendermint_proto::abci::ResponseInitChain {
+        let mut state = self.state.write();
+        state.chain_id = ChainId(request.chain_id);
+
+        tendermint_proto::abci::ResponseInitChain::default()
+    }
 
     fn query(&self, _request: tendermint_proto::abci::RequestQuery) -> ResponseQuery {
         todo!()
@@ -56,9 +62,8 @@ impl Application for Shell {
         &self,
         request: tendermint_proto::abci::RequestFinalizeBlock,
     ) -> tendermint_proto::abci::ResponseFinalizeBlock {
-        let mut height = self.height.write();
-        let mut balances = self.accounts.write();
-        *height = request.height;
+        let mut state = self.state.write();
+        state.current_height = request.height;
 
         let mut tx_results = Vec::new();
 
@@ -76,7 +81,7 @@ impl Application for Shell {
                     }
                     match tx.tx_payload {
                         TxPayload::CreateAccount => {
-                            balances.insert(
+                            state.accounts.insert(
                                 tx.from.clone(),
                                 Account {
                                     balance: 1_000_000,
@@ -91,10 +96,10 @@ impl Application for Shell {
                             });
                         }
                         TxPayload::Transfer { to, amount } => {
-                            let from = balances.get_mut(&tx.from).unwrap();
+                            let from = state.accounts.get_mut(&tx.from).unwrap();
                             from.balance -= amount.get();
                             from.nonce += 1;
-                            balances.get_mut(&to).unwrap().balance += amount.get();
+                            state.accounts.get_mut(&to).unwrap().balance += amount.get();
 
                             tx_results.push(ExecTxResult {
                                 code: 0,

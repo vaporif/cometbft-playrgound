@@ -1,6 +1,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use parking_lot::RwLock;
+use state::State;
 use thiserror::Error;
 
 use crate::{
@@ -9,17 +10,11 @@ use crate::{
 };
 
 pub mod abci;
-struct MerkleTree<'a, S> {
-    accounts: jmt::Sha256Jmt<'a, S>,
-}
+pub mod state;
 
 #[derive(Clone, Debug)]
-pub struct Shell {
-    pub chain_id: ChainId,
-    // TODO: arc rwlocks should be removed in favor of proper storage
-    //state: cnidarium::Storage,
-    accounts: Arc<RwLock<HashMap<Address, Account>>>,
-    height: Arc<RwLock<i64>>,
+pub struct App {
+    pub state: Arc<RwLock<State>>,
 }
 
 #[derive(Debug)]
@@ -35,18 +30,22 @@ struct ValidationError {
     log: String,
 }
 
-impl Shell {
+impl App {
     // TODO: read config
     pub fn new() -> Self {
-        Self {
+        let state = State {
             chain_id: ChainId("test".to_string()),
-            height: Arc::new(RwLock::new(0)),
-            accounts: Arc::new(RwLock::new(HashMap::new())),
-        }
+            current_height: 0,
+            accounts: HashMap::new(),
+        };
+
+        let state = Arc::new(RwLock::new(state));
+
+        Self { state }
     }
 
     fn validate_tx(&self, tx: &Transaction) -> Result<(), ValidationError> {
-        let accounts = self.accounts.read();
+        let state = self.state.read();
         if let Some(expiration) = tx.header.expiration {
             // TODO: Should be block time
             if DateTimeUtc::now().0 > expiration.0 {
@@ -57,7 +56,7 @@ impl Shell {
             }
         }
 
-        let curr_nonce = accounts.get(&tx.from).map(|f| f.nonce).unwrap_or(0);
+        let curr_nonce = state.accounts.get(&tx.from).map(|f| f.nonce).unwrap_or(0);
         if curr_nonce + 1 != tx.nonce {
             return Err(ValidationError {
                 code: 7,
@@ -67,7 +66,7 @@ impl Shell {
 
         match &tx.tx_payload {
             TxPayload::CreateAccount => {
-                if accounts.contains_key(&tx.from) {
+                if state.accounts.contains_key(&tx.from) {
                     return Err(ValidationError {
                         code: 7,
                         log: format!("account {} already exists", tx.from).to_string(),
@@ -75,14 +74,15 @@ impl Shell {
                 }
             }
             TxPayload::Transfer { to, amount } => {
-                if !accounts.contains_key(to) {
+                if !state.accounts.contains_key(to) {
                     return Err(ValidationError {
                         code: 7,
                         log: format!("account {} does not exist", tx.from).to_string(),
                     });
                 }
 
-                let balance = accounts
+                let balance = state
+                    .accounts
                     .get(&tx.from)
                     .ok_or_else(|| ValidationError {
                         code: 5,
