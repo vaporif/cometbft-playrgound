@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-borsh = { version = "1.5.5", features = ["borsh-derive", "bytes", "derive"] }
+borsh = { version = "1.5.5", features = ["borsh-derive", "bytes", "derive", "unstable__schema"] }
 chrono = "0.4.39"
 # cnidarium = "0.83.0"
 eyre = "0.6.12"

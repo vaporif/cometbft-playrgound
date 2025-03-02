@@ -1,6 +1,6 @@
 use std::{fmt::Display, num::ParseIntError, str::FromStr};
 
-use borsh::{BorshDeserialize, BorshSerialize};
+use borsh::{BorshDeserialize, BorshSchema, BorshSerialize};
 
 #[derive(
     Clone,

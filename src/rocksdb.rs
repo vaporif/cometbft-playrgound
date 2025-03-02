@@ -8,16 +8,8 @@ use rocksdb::{
     BlockBasedOptions, ColumnFamily, ColumnFamilyDescriptor, DBCompactionStyle, DBCompressionType,
     Options, WriteBatch,
 };
-use thiserror::Error;
 
-pub type Result<T> = std::result::Result<T, Error>;
-
-#[allow(missing_docs)]
-#[derive(Error, Debug)]
-pub enum Error {
-    #[error("DB error: {0}")]
-    DBError(String),
-}
+use crate::{db::DB, DBWriteBatch};
 
 #[derive(Debug)]
 pub struct RocksDB {
@@ -25,7 +17,6 @@ pub struct RocksDB {
     invalid_handle: bool,
     read_only: bool,
 }
-
 #[derive(Default)]
 pub struct RocksDBWriteBatch(WriteBatch);
 
@@ -118,30 +109,6 @@ impl Drop for RocksDB {
         unsafe { ManuallyDrop::drop(&mut self.inner) }
     }
 }
-
-pub trait DB: Debug {
-    type Cache;
-
-    type WriteBatch: DBWriteBatch;
-
-    fn open(db_path: impl AsRef<std::path::Path>, cache: Option<&Self::Cache>) -> Self;
-
-    fn path(&self) -> Option<&std::path::Path> {
-        None
-    }
-
-    fn read_val(&self, key: String) -> Result<Option<Vec<u8>>>;
-
-    fn batch() -> Self::WriteBatch;
-
-    fn exec_batch(&self, batch: Self::WriteBatch) -> Result<()>;
-
-    fn flush(&self, wait: bool) -> Result<()>;
-
-    fn read_last_block(&self) -> Result<Option<Block>>;
-}
-
-pub trait DBWriteBatch {}
 
 impl DB for RocksDB {
     type Cache = rocksdb::Cache;
